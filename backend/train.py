@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from pathlib import Path
 import joblib
 import numpy as np
-import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 import torch
 import torch.nn as nn
@@ -15,34 +15,44 @@ from torch.utils.data import DataLoader, TensorDataset
 from model import AdGuardAutoencoder, FEATURE_COLUMNS
 
 
-def generate_synthetic_normal_sessions(count: int = 1200, seed: int = 42) -> pd.DataFrame:
+def generate_synthetic_normal_sessions(count: int = 1200, seed: int = 42) -> np.ndarray:
     """Generate synthetic normal ad traffic solely for prototype training tests."""
     rng = np.random.default_rng(seed)
-    clicks = rng.integers(1, 10, size=count)
-    duration = rng.normal(loc=155.0, scale=35.0, size=count).clip(45.0, 320.0)
-    spend = (clicks * rng.uniform(1.6, 2.8, size=count)).round(2)
-    return pd.DataFrame(
-        {
-            "clicks": clicks,
-            "session_duration": duration,
-            "ad_spend": spend,
-        }
-    )
+    clicks = rng.integers(1, 10, size=count).astype(np.float32)
+    duration = rng.normal(loc=155.0, scale=35.0, size=count).clip(45.0, 320.0).astype(np.float32)
+    spend = np.round(clicks * rng.uniform(1.6, 2.8, size=count), 2).astype(np.float32)
+    return np.column_stack([clicks, duration, spend])
+
+
+def load_csv_features(csv_path: str) -> np.ndarray:
+    rows: list[list[float]] = []
+    with open(csv_path, mode="r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames:
+            raise ValueError("CSV file has no header row.")
+        missing = [c for c in FEATURE_COLUMNS if c not in reader.fieldnames]
+        if missing:
+            raise ValueError(f"CSV is missing required columns: {missing}")
+        for record in reader:
+            try:
+                vals = [float(record[col]) for col in FEATURE_COLUMNS]
+            except (TypeError, ValueError):
+                continue
+            rows.append(vals)
+    if not rows:
+        raise ValueError("No valid numeric training rows found in CSV.")
+    return np.array(rows, dtype=np.float32)
 
 
 def train_model(csv_path: str | None, epochs: int, batch_size: int, out_dir: Path) -> None:
     if csv_path:
-        df = pd.read_csv(csv_path)
-        missing = [c for c in FEATURE_COLUMNS if c not in df.columns]
-        if missing:
-            raise ValueError(f"CSV is missing required columns: {missing}")
-        df = df[FEATURE_COLUMNS].dropna()
+        raw_matrix = load_csv_features(csv_path)
     else:
         print("No --csv supplied; generating synthetic baseline normal sessions for prototype training.")
-        df = generate_synthetic_normal_sessions()
+        raw_matrix = generate_synthetic_normal_sessions()
 
     scaler = MinMaxScaler()
-    scaled = scaler.fit_transform(df[FEATURE_COLUMNS].to_numpy(dtype=np.float32))
+    scaled = scaler.fit_transform(raw_matrix).astype(np.float32)
 
     dataset = TensorDataset(torch.tensor(scaled, dtype=torch.float32))
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
