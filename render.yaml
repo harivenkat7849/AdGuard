@@ -2,11 +2,14 @@ services:
   - type: web
     name: adguard-ai-api
     runtime: python
+    plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --no-cache-dir -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.11"
       - key: ANOMALY_THRESHOLD
         value: "0.55"
       - key: TORCH_NUM_THREADS

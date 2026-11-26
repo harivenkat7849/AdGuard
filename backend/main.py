@@ -36,15 +36,17 @@ if ML_DEPS_AVAILABLE:
 
 
 def normalize_database_url(raw_url: str) -> str:
-    if raw_url.startswith("postgres://"):
-        return raw_url.replace("postgres://", "postgresql+psycopg://", 1)
-    if raw_url.startswith("postgresql://") and "+psycopg" not in raw_url:
-        return raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
-    return raw_url
+    cleaned = raw_url.strip()
+    if cleaned.startswith("postgres://"):
+        return cleaned.replace("postgres://", "postgresql+psycopg://", 1)
+    if cleaned.startswith("postgresql://") and "+psycopg" not in cleaned:
+        return cleaned.replace("postgresql://", "postgresql+psycopg://", 1)
+    return cleaned
 
 
+_env_db_url = (os.getenv("DATABASE_URL") or "").strip()
 DATABASE_URL = normalize_database_url(
-    os.getenv("DATABASE_URL", f"sqlite:///{(BASE_DIR / 'adguard.db').as_posix()}")
+    _env_db_url if _env_db_url else f"sqlite:///{(BASE_DIR / 'adguard.db').as_posix()}"
 )
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
@@ -86,9 +88,7 @@ class SessionLog(Base):
     signal_note = Column(String(255), nullable=True)
 
 
-Base.metadata.create_all(bind=engine)
-
-THRESHOLD = float(os.getenv("ANOMALY_THRESHOLD", "0.55"))
+THRESHOLD = float((os.getenv("ANOMALY_THRESHOLD") or "0.55").strip() or "0.55")
 MAX_BATCH_SIZE = 500
 ml_state: dict[str, object] = {
     "model": None,
@@ -99,6 +99,7 @@ ml_state: dict[str, object] = {
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    Base.metadata.create_all(bind=engine)
     if ML_DEPS_AVAILABLE and MODEL_PATH.exists() and SCALER_PATH.exists():
         scaler = joblib.load(SCALER_PATH)
         model = AdGuardAutoencoder(input_dim=3)
@@ -249,6 +250,16 @@ def persist_scored_sessions(
         db.commit()
 
     return responses
+
+
+@app.get("/")
+def root():
+    return {
+        "service": "AdGuard AI — Ad Spend Anomaly Detector API",
+        "status": "ok",
+        "health": "/health",
+        "docs": "/docs",
+    }
 
 
 @app.get("/health")
