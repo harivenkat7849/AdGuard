@@ -81,7 +81,8 @@ export async function fetchSessions(
 
   try {
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 5000);
+    // Allow up to 35s for Render free-tier cold start wake-up
+    const timeout = window.setTimeout(() => controller.abort(), 35000);
 
     const response = await fetch(
       `${API_BASE_URL}/sessions?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`,
@@ -107,16 +108,23 @@ export async function fetchSessions(
 
     return { sessions: payload, source: 'live' };
   } catch (err) {
-    const reason =
+    const baseDetail =
       err instanceof Error
         ? err.message
         : `FastAPI backend unavailable at ${API_BASE_URL}.`;
+
+    const hint =
+      API_BASE_URL.includes('localhost') &&
+      typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost'
+        ? ` (Vercel is still pointing to ${API_BASE_URL} — set VITE_API_BASE_URL in Vercel and Redeploy.)`
+        : ` (Endpoint: ${API_BASE_URL} — verify Render is awake and CORS allows ${typeof window !== 'undefined' ? window.location.origin : 'this origin'}.)`;
 
     // Clean explicit fallback: returned source is explicitly marked 'demo' so UI warns the user.
     return {
       sessions: DEMO_SESSIONS,
       source: 'demo',
-      fallbackReason: `${reason} Showing clearly labelled DEMO DATA fallback instead.`,
+      fallbackReason: `${baseDetail}${hint} Showing clearly labelled DEMO DATA fallback instead.`,
     };
   }
 }
@@ -149,7 +157,7 @@ export async function predictSession(
 
   try {
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 6000);
+    const timeout = window.setTimeout(() => controller.abort(), 35000);
 
     const response = await fetch(`${API_BASE_URL}/predict`, {
       method: 'POST',
@@ -224,7 +232,7 @@ export async function predictBatch(
 
   try {
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    const timeout = window.setTimeout(() => controller.abort(), 45000);
 
     const response = await fetch(`${API_BASE_URL}/predict/batch`, {
       method: 'POST',

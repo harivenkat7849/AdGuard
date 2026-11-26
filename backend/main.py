@@ -126,13 +126,16 @@ allowed_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
-frontend_origin = os.getenv("FRONTEND_ORIGIN", "").strip()
+frontend_origin = (os.getenv("FRONTEND_ORIGIN") or "").strip()
 if frontend_origin:
-    allowed_origins.extend([o.strip() for o in frontend_origin.split(",") if o.strip()])
+    allowed_origins.extend(
+        [o.strip().rstrip("/") for o in frontend_origin.split(",") if o.strip()]
+    )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"^https://[a-zA-Z0-9-]+\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
